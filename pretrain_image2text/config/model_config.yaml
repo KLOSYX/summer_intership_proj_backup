@@ -1,0 +1,2 @@
+model_name: "visual_text_encoder_decoder"
+dm_name: "multi_modal_data"
