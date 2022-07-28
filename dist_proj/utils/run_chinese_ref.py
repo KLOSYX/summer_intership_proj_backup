@@ -129,7 +129,7 @@ def main(args):
     ref_ids = prepare_ref(data.text.to_list(), bert_tokenizer)
     
     data['cn_ref'] = ref_ids
-    data.to_json(args.output_file, orient='records', lines=True, force_ascii=False)
+    data.to_json(args.save_path, orient='records', lines=True, force_ascii=False)
     
     # with open(args.save_path, "w", encoding="utf-8") as f:
     #     data = [json.dumps(ref) + "\n" for ref in ref_ids]
