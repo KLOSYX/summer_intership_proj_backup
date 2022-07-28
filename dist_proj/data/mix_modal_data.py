@@ -1,12 +1,13 @@
 from pathlib import Path
 from typing import *
 from argparse import ArgumentParser
+import random
 
 import pytorch_lightning as pl
 import torch
 from torch import nn
 import numpy as np
-from transformers import AutoTokenizer, AutoFeatureExtractor
+from transformers import AutoTokenizer, AutoFeatureExtractor, DataCollatorForWholeWordMask
 from torch.utils.data import DataLoader, random_split
 from torchvision import transforms
 import pandas as pd
@@ -57,7 +58,7 @@ class GaussianBlur(object):
 
 
 class MixModalDataset(object):
-    def __init__(self, file_path, stage='fit', image_size=224, multimodal=False, mlm=False):
+    def __init__(self, file_path, stage='fit', image_size=224, multimodal=False, mlm=False, whole_word_mask=False):
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"{file_path} not found!")
@@ -67,6 +68,7 @@ class MixModalDataset(object):
             self.transformer = self.get_simclr_pipeline_transform(image_size)
         self.multimodal = multimodal
         self.mlm = mlm
+        self.whole_word_mask = whole_word_mask
         print('total data:', len(self.data))
 
     @staticmethod
@@ -106,15 +108,21 @@ class MixModalDataset(object):
             else:
                 return text, label
         else:
-            return text
+            if not self.whole_word_mask:
+                return text
+            else:
+                cn_ref = sample["cn_ref"]
+                return text, cn_ref
 
 
 class Processor(object):
-    def __init__(self, img_processor, text_tokenizer, max_length=256, mlm=False) -> None:
+    def __init__(self, img_processor, text_tokenizer, max_length=256, mlm=False, whole_word_mask=False, mlm_probability=0.15) -> None:
         self.img_processor = img_processor
         self.text_tokenizer = text_tokenizer
         self.max_length = max_length
         self.mlm = mlm
+        self.whole_word_mask = whole_word_mask
+        self.mlm_probability = mlm_probability
 
     def __call__(self, data: list) -> Any:
         if not self.mlm:
@@ -133,11 +141,30 @@ class Processor(object):
                 labels = torch.argmax(torch.tensor(labels, dtype=torch.long), dim=1)
                 return tokens, labels
         else:
-            tokens = self.text_tokenizer(data, return_tensors='pt', truncation=True,
-                            max_length=self.max_length, padding='max_length', return_special_tokens_mask=True)
-            tokens["input_ids"], tokens["labels"] = self.torch_mask_tokens(
-                tokens.input_ids, special_tokens_mask=tokens.special_tokens_mask)
-            return tokens
+            if not self.whole_word_mask:
+                tokens = self.text_tokenizer(data, return_tensors='pt', truncation=True,
+                                max_length=self.max_length, padding='max_length', return_special_tokens_mask=True)
+                tokens["input_ids"], tokens["labels"] = self.torch_mask_tokens(
+                    tokens.input_ids, special_tokens_mask=tokens.special_tokens_mask)
+                return tokens
+            else:
+                # whole word mask
+                text, cn_refs = zip(*data)
+                tokens = self.text_tokenizer(text, return_tensors='pt', truncation=True,
+                            max_length=self.max_length, padding='max_length')
+                mask_labels = [self._whole_word_mask(self._handle_chinese_ref(tokens.tokens(i), cn_refs[i])) for i in range(len(tokens))]
+                tokens["input_ids"], tokens["labels"] = self.torch_mask_tokens(
+                    tokens.input_ids, special_tokens_mask=mask_labels)
+                return tokens
+                
+                
+    def _handle_chinese_ref(self, tokens: List[str], cn_ref: List[int]):
+        # For Chinese tokens, we need extra inf to mark sub-word, e.g [喜,欢]-> [喜，##欢]
+        for i in range(len(tokens)):
+            if i in cn_ref:
+                tokens[i] = "##" + tokens[i]
+        return tokens
+                
         
     def torch_mask_tokens(self, inputs: Any, special_tokens_mask: Optional[Any] = None) -> Tuple[Any, Any]:
         """
@@ -145,7 +172,7 @@ class Processor(object):
         """
         labels = inputs.clone()
         # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
-        probability_matrix = torch.full(labels.shape, 0.15)
+        probability_matrix = torch.full(labels.shape, self.mlm_probability)
         if special_tokens_mask is None:
             special_tokens_mask = [
                 self.text_tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True) for val in labels.tolist()
@@ -174,9 +201,49 @@ class Processor(object):
 
         # The rest of the time (10% of the time) we keep the masked input tokens unchanged
         return inputs, labels
+    
+    def _whole_word_mask(self, input_tokens: List[str], max_predictions=512):
+        """
+        Get 0/1 labels for masked tokens with whole word mask proxy
+        """
+        cand_indexes = []
+        for i, token in enumerate(input_tokens):
+            if token == "[CLS]" or token == "[SEP]" or token == "[PAD]":
+                continue
+            if len(cand_indexes) >= 1 and token.startswith("##"):
+                cand_indexes[-1].append(i)
+            else:
+                cand_indexes.append([i])
+
+        random.shuffle(cand_indexes)
+        num_to_predict = min(max_predictions, max(1, int(round(len(input_tokens) * self.mlm_probability))))
+        masked_lms = []
+        covered_indexes = set()
+        for index_set in cand_indexes:
+            if len(masked_lms) >= num_to_predict:
+                break
+            # If adding a whole-word mask would exceed the maximum number of
+            # predictions, then just skip this candidate.
+            if len(masked_lms) + len(index_set) > num_to_predict:
+                continue
+            is_any_index_covered = False
+            for index in index_set:
+                if index in covered_indexes:
+                    is_any_index_covered = True
+                    break
+            if is_any_index_covered:
+                continue
+            for index in index_set:
+                covered_indexes.add(index)
+                masked_lms.append(index)
+
+        if len(covered_indexes) != len(masked_lms):
+            raise ValueError("Length of covered_indexes is not equal to length of masked_lms.")
+        mask_labels = [1 if i in covered_indexes else 0 for i in range(len(input_tokens))]
+        return mask_labels
 
 class MixModalData(pl.LightningDataModule):
-    def __init__(self, batch_size_per_gpu=4, num_workers=0, val_size=6000, max_length=256, multimodal=False, mlm=False, **args) -> None:
+    def __init__(self, batch_size_per_gpu=4, num_workers=0, val_size=6000, max_length=256, multimodal=False, mlm=False, whole_word_mask=False, **args) -> None:
         super().__init__()
         self.save_hyperparameters()
         self.visual_processor = AutoFeatureExtractor.from_pretrained(
@@ -184,11 +251,11 @@ class MixModalData(pl.LightningDataModule):
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.hparams.tokenizer_name, cache_dir='/data/.cache')
         self.processor = Processor(
-            self.visual_processor, self.tokenizer, max_length=max_length, mlm=mlm)
+            self.visual_processor, self.tokenizer, max_length=max_length, mlm=mlm, whole_word_mask=whole_word_mask)
 
     def setup(self, stage: str = None) -> None:
         if stage is None or stage == 'fit':
-            data = MixModalDataset(self.hparams.train_path, stage=stage, multimodal=self.visual_processor is not None, mlm=self.hparams.mlm)
+            data = MixModalDataset(self.hparams.train_path, stage=stage, multimodal=self.visual_processor is not None, mlm=self.hparams.mlm, whole_word_mask=self.hparams.whole_word_mask)
             data_size = len(data)
             val_size = int(self.hparams.val_ratio * data_size)
             train_size = data_size - val_size
@@ -197,7 +264,7 @@ class MixModalData(pl.LightningDataModule):
 
         if stage is None or stage == 'test':
             self.test_dataset = MixModalDataset(
-                self.hparams.test_path, stage=stage, multimodal=self.visual_processor is not None, mlm=self.hparams.mlm)
+                self.hparams.test_path, stage=stage, multimodal=self.visual_processor is not None, mlm=self.hparams.mlm, whole_word_mask=self.hparams.whole_word_mask)
 
     def train_dataloader(self) -> Any:
         return DataLoader(self.train_dataset, batch_size=self.hparams.batch_size_per_gpu, num_workers=self.hparams.num_workers, shuffle=True, collate_fn=self.processor, drop_last=True)
@@ -212,6 +279,7 @@ class MixModalData(pl.LightningDataModule):
     def add_data_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--tokenizer_name', default='hfl/chinese-roberta-wwm-ext', type=str)
+        parser.add_argument('--whole_word_mask', action='store_true', help='Whether to use whole word masking or not.')
         parser.add_argument('--mlm', action='store_true', help='Masked Language Model')
         parser.add_argument('--max_length', type=int,
                             default=256, help='max length of text')
@@ -230,7 +298,9 @@ if __name__ == '__main__':
     dm = MixModalData(batch_size_per_gpu=4, num_workers=0, text_decoder='hfl/chinese-macbert-base',
                             train_path='/data/clean_raw_text/district_labeled_data.json',
                             test_path='/data/clean_raw_text/district_labeled_data.json',
-                            multimodal=False)
+                            multimodal=False,
+                            mlm=True,
+                            whole_word_mask=True,)
     dm.setup('fit')
     dataloader = dm.train_dataloader()
     it = iter(dataloader)
