@@ -101,26 +101,27 @@ class DistClassify(pl.LightningModule):
         return (logits, labels)
     
     def validation_epoch_end(self, outputs: Union[EPOCH_OUTPUT, List[EPOCH_OUTPUT]]) -> None:
-        logits, labels = zip(*outputs)
-        file = '/data/clean_raw_text/district_label_map.txt' if 'district' in self.hparams.train_path else '/data/clean_raw_text/street_label_map.txt'
-        text_labels = [text.strip('\n') for text in open(file, 'r').readlines()]
-        preds = torch.argmax(torch.cat(logits, dim=0), dim=1).detach().cpu().numpy()
-        targets = torch.cat(labels, dim=0).detach().cpu().numpy()
-        cm = confusion_matrix(targets, preds, labels=range(self.hparams.num_classes), normalize='true')
-        if self.hparams.wandb and self.global_rank == 0 and self.hparams.stage == 'fit':
-            fig = plot_confusion_matrix(cm, target_names=text_labels, normalize=False)
-            self.logger.log_image(key='confusion_matrix', images=[fig])
-        
+        if self.hparams.draw_confusion_matrix:
+            logits, labels = zip(*outputs)
+            file = '/data/clean_raw_text/district_label_map.txt' if 'district' in self.hparams.train_path else '/data/clean_raw_text/street_label_map.txt'
+            text_labels = [text.strip('\n') for text in open(file, 'r').readlines()]
+            preds = torch.argmax(torch.cat(logits, dim=0), dim=1).detach().cpu().numpy()
+            targets = torch.cat(labels, dim=0).detach().cpu().numpy()
+            cm = confusion_matrix(targets, preds, labels=range(self.hparams.num_classes), normalize='true')
+            if self.hparams.wandb and self.global_rank == 0 and self.hparams.stage == 'fit':
+                fig = plot_confusion_matrix(cm, target_names=text_labels, normalize=False)
+                self.logger.log_image(key='confusion_matrix', images=[fig])
 
     def on_validation_epoch_end(self) -> None:
         if self.global_step > 1 and self.hparams.use_nni:
-            metric = self.val_acc.compute().item()
+            metric = self.val_acc.compute()['val_accuracy_top_1'].item()
             if self.global_rank == 0:
                 nni.report_intermediate_result(metric)
 
     @staticmethod
     def add_model_args(parser):
         parser = ArgumentParser(parents=[parser], add_help=False)
+        parser.add_argument('--draw_confusion_matrix', action='store_true', help='draw confusion matrix or not')
         parser.add_argument('--num_classes', type=int, default=63)
         parser.add_argument('--bert_name', type=str,
                             default='hfl/chinese-macbert-base', help='text decoder')

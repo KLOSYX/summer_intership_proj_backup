@@ -17,10 +17,12 @@ CUDA_VISIBLE_DEVICES=1,2,3,4 python main.py \
   --bert_name=${BERT_NAME} \
   --tokenizer_name=${TOKENIZER_NAME} \
   --max_length=200 \
-  --train_path=/data/clean_raw_text/street_labeled_data.json \
+  --train_path=/data/clean_raw_text/dataset/street_train_eda_0.json \
+  --eda \
+  --eda_prob=0 \
   --focal_loss \
   --num_classes=58 \
-  --save_top_k=3 \
+  --save_top_k=0 \
   --num_warmup_steps=500 \
   --val_ratio=0.1 \
   --learning_rate=1e-5 \
@@ -35,4 +37,5 @@ CUDA_VISIBLE_DEVICES=1,2,3,4 python main.py \
   --multi_gpu_strategy=deepspeed_stage_2 \
   --precision=32 \
   --num_workers=32 \
+  --use_nni \
   --stage=fit
