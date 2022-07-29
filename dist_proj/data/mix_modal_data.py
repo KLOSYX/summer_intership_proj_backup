@@ -150,11 +150,13 @@ class Processor(object):
             else:
                 # whole word mask
                 text, cn_refs = zip(*data)
-                tokens = self.text_tokenizer(text, return_tensors='pt', truncation=True,
+                tokens = self.text_tokenizer(list(text), return_tensors='pt', truncation=True,
                             max_length=self.max_length, padding='max_length')
-                mask_labels = [self._whole_word_mask(self._handle_chinese_ref(tokens.tokens(i), cn_refs[i])) for i in range(len(tokens))]
-                tokens["input_ids"], tokens["labels"] = self.torch_mask_tokens(
-                    tokens.input_ids, special_tokens_mask=mask_labels)
+                mask_labels = [self._whole_word_mask(self._handle_chinese_ref(tokens.tokens(i), cn_refs[i])) for i in range(len(text))]
+                mask_labels = torch.tensor(mask_labels, dtype=torch.bool)
+                labels = tokens.input_ids.masked_fill(~mask_labels, -100)
+                tokens['labels'] = labels
+                tokens.input_ids.masked_fill_(mask_labels, self.text_tokenizer.mask_token_id)
                 return tokens
                 
                 
@@ -243,7 +245,16 @@ class Processor(object):
         return mask_labels
 
 class MixModalData(pl.LightningDataModule):
-    def __init__(self, batch_size_per_gpu=4, num_workers=0, val_size=6000, max_length=256, multimodal=False, mlm=False, whole_word_mask=False, **args) -> None:
+    def __init__(self, tokenizer_name='hfl/chinese-roberta-wwm-ext', 
+                 batch_size_per_gpu=4, 
+                 num_workers=0, 
+                 val_size=6000, 
+                 max_length=256, 
+                 multimodal=False, 
+                 mlm=False, 
+                 whole_word_mask=False, 
+                 val_ratio=0.1,
+                 **args) -> None:
         super().__init__()
         self.save_hyperparameters()
         self.visual_processor = AutoFeatureExtractor.from_pretrained(
@@ -295,9 +306,10 @@ class MixModalData(pl.LightningDataModule):
 
 if __name__ == '__main__':
     # debug
-    dm = MixModalData(batch_size_per_gpu=4, num_workers=0, text_decoder='hfl/chinese-macbert-base',
-                            train_path='/data/clean_raw_text/district_labeled_data.json',
-                            test_path='/data/clean_raw_text/district_labeled_data.json',
+    dm = MixModalData(batch_size_per_gpu=4, num_workers=0,
+                            train_path='/data/clean_raw_text/all_data_cleaned_with_cn_ref.json',
+                            test_path='/data/clean_raw_text/all_data_cleaned_with_cn_ref.json',
+                            tokenizer_name='hfl/chinese-roberta-wwm-ext',
                             multimodal=False,
                             mlm=True,
                             whole_word_mask=True,)
