@@ -15,7 +15,11 @@ from loader import load_model_path_by_args
 ROOT = Path(__file__).parent
 sys.path.append(str(ROOT.absolute()))
 
-with open(ROOT / 'config' / 'model_config.yaml') as f:
+tmp_config_dir = ROOT / 'config'
+if not tmp_config_dir.exists():
+    logging.info(f"Temp config directory doesn't exist. Create directory {tmp_config_dir}")
+    tmp_config_dir.mkdir(parents=True)
+with open(tmp_config_dir / 'temp_model_config.yaml') as f:
     config = yaml.safe_load(f)
 MODEL_NAME = config['model_name']
 DATA_MODULE_NAME = config['dm_name']
@@ -82,6 +86,7 @@ def load_callbacks(args):
 
 def save_config(params: dict):
     save_path = Path(__file__).parent / params.get('log_dir', './') / params.get('project_name', '')
+    save_path.mkdir(parents=True, exist_ok=True)
     save_file = save_path / 'latest_config.yaml'
     with open(save_file, 'w') as f:
         yaml.dump(params, f)
@@ -166,7 +171,6 @@ def main(parent_parser):
         args.multi_gpu_strategy = DDPStrategy(find_unused_parameters=args.find_unused_parameters)
     
     # initilize trainer
-    # trainer = pl.Trainer.from_argparse_args(args)
     trainer = pl.Trainer(
         default_root_dir=args.log_dir,
         strategy=args.multi_gpu_strategy,
@@ -226,15 +230,9 @@ def get_params():
 
     # Training Info
     parser.add_argument("--wandb", action="store_true", help='use wandb')
-    # parser.add_argument("--no_early_stop", action="store_true")
     parser.add_argument("--use_nni", action="store_true", help='use nni')
     parser.add_argument("--monitor", type=str, default="val_acc", help='monitor to use for early stop')
 
-    # parser = pl.Trainer.add_argparse_args(parser)
-
-    # Reset Some Default Trainer Arguments' Default Values
-    # parser.set_defaults(max_epochs=40)
-    # parser.set_defaults(gpus=1)
     return parser
 
 
