@@ -15,11 +15,10 @@ from loader import load_model_path_by_args
 ROOT = Path(__file__).parent
 sys.path.append(str(ROOT.absolute()))
 
-tmp_config_dir = ROOT / 'config'
-if not tmp_config_dir.exists():
-    logging.info(f"Temp config directory doesn't exist. Create directory {tmp_config_dir}")
-    tmp_config_dir.mkdir(parents=True)
-with open(tmp_config_dir / 'temp_model_config.yaml') as f:
+tmp_config_path = ROOT / 'config' / 'temp_model_config.yaml'
+if not tmp_config_path.exists():
+    raise FileNotFoundError(f"Temp config doesn't exist.")
+with open(tmp_config_path) as f:
     config = yaml.safe_load(f)
 MODEL_NAME = config['model_name']
 DATA_MODULE_NAME = config['dm_name']

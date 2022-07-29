@@ -5,12 +5,12 @@ TOKENIZER_NAME='/data/proj/dist_proj/pl_log/pretrain_pure_text_mlm/1oyphuu9/mode
 PL_MODEL_NAME="dist_classify"
 PL_DM_NAME="mix_modal_data"
 
-echo -n 'model_name: "' > ${CURRENT_DIR}/config/model_config.yaml
-echo -n ${PL_MODEL_NAME} >> ${CURRENT_DIR}/config/model_config.yaml
-echo '"' >> ${CURRENT_DIR}/config/model_config.yaml
-echo -n 'dm_name: "' >> ${CURRENT_DIR}/config/model_config.yaml
-echo -n ${PL_DM_NAME} >> ${CURRENT_DIR}/config/model_config.yaml
-echo '"' >> ${CURRENT_DIR}/config/model_config.yaml
+echo -n 'model_name: "' > ${CURRENT_DIR}/config/temp_model_config.yaml
+echo -n ${PL_MODEL_NAME} >> ${CURRENT_DIR}/config/model_temp_model_configconfig.yaml
+echo '"' >> ${CURRENT_DIR}/config/temp_model_config.yaml
+echo -n 'dm_name: "' >> ${CURRENT_DIR}/config/temp_model_config.yaml
+echo -n ${PL_DM_NAME} >> ${CURRENT_DIR}/config/temp_model_config.yaml
+echo '"' >> ${CURRENT_DIR}/config/temp_model_config.yaml
 
 CUDA_VISIBLE_DEVICES=2,3,5,6 python main.py \
   --project_name=${TASK_NAME} \
