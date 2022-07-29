@@ -4,12 +4,12 @@ BERT_NAME='hfl/chinese-roberta-wwm-ext'
 PL_MODEL_NAME="pure_text_mlm_pretrain"
 PL_DM_NAME="mix_modal_data"
 
-echo -n 'model_name: "' > ${CURRENT_DIR}/config/model_config.yaml
-echo -n ${PL_MODEL_NAME} >> ${CURRENT_DIR}/config/model_config.yaml
-echo '"' >> ${CURRENT_DIR}/config/model_config.yaml
-echo -n 'dm_name: "' >> ${CURRENT_DIR}/config/model_config.yaml
-echo -n ${PL_DM_NAME} >> ${CURRENT_DIR}/config/model_config.yaml
-echo '"' >> ${CURRENT_DIR}/config/model_config.yaml
+echo -n 'model_name: "' > ${CURRENT_DIR}/config/temp_model_config.yaml
+echo -n ${PL_MODEL_NAME} >> ${CURRENT_DIR}/config/temp_model_config.yaml
+echo '"' >> ${CURRENT_DIR}/config/temp_model_config.yaml
+echo -n 'dm_name: "' >> ${CURRENT_DIR}/config/temp_model_config.yaml
+echo -n ${PL_DM_NAME} >> ${CURRENT_DIR}/config/temp_model_config.yaml
+echo '"' >> ${CURRENT_DIR}/config/temp_model_config.yaml
 
 CUDA_VISIBLE_DEVICES=1,2,3,4 python main.py \
   --project_name=${TASK_NAME} \
