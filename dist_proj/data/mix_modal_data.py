@@ -12,7 +12,6 @@ from torch.utils.data import DataLoader, random_split
 from torchvision import transforms
 import pandas as pd
 from PIL import Image
-from ChineseTextEDA.eda import EDA
 
 
 class GaussianBlur(object):
@@ -70,7 +69,7 @@ class MixModalDataset(object):
         self.multimodal = multimodal
         self.mlm = mlm
         self.whole_word_mask = whole_word_mask
-        self.eda = EDA(0) if eda else None
+        self.eda = eda
         self.eda_prob = eda_prob
         print('total data:', len(self.data))
 
@@ -96,11 +95,10 @@ class MixModalDataset(object):
     def __getitem__(self, index):
         sample = self.data.iloc[index]
         text = sample["text"]
-        if self.eda is not None:
+        if self.eda and self.stage == 'fit':
             p = random.random()
             if p < self.eda_prob:
-                aug_texts = self.eda.eda(text, 0.2, 0.2, 0.2, 0.2)
-                text = ''.join(aug_texts[0].split(' '))
+                text = random.choice(sample['eda_text'])
         if not self.mlm:
             label = sample["label"]
             if self.multimodal:
@@ -288,6 +286,7 @@ class MixModalData(pl.LightningDataModule):
             print('train_size:', train_size, '\nval_size:', val_size)
             self.train_dataset, self.valid_dataset = random_split(
                 data, [train_size, val_size])
+            self.valid_dataset.stage = 'val' # change stage to 'val', avoid applying eda on val set
 
         if stage is None or stage == 'test':
             self.test_dataset = MixModalDataset(

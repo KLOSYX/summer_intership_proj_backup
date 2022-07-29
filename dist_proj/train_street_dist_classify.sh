@@ -1,18 +1,18 @@
 CURRENT_DIR=`pwd`
 TASK_NAME="street_dist_classify"
-BERT_NAME='/data/proj/dist_proj/pl_log/pretrain_pure_text_mlm/1oyphuu9/model'
-TOKENIZER_NAME='/data/proj/dist_proj/pl_log/pretrain_pure_text_mlm/1oyphuu9/model'
+BERT_NAME='/data/dl/summer_intership_proj_backup/dist_proj/pl_log/pretrain_pure_text_mlm/2of9i956'
+TOKENIZER_NAME='/data/dl/summer_intership_proj_backup/dist_proj/pl_log/pretrain_pure_text_mlm/2of9i956'
 PL_MODEL_NAME="dist_classify"
 PL_DM_NAME="mix_modal_data"
 
 echo -n 'model_name: "' > ${CURRENT_DIR}/config/temp_model_config.yaml
-echo -n ${PL_MODEL_NAME} >> ${CURRENT_DIR}/config/model_temp_model_configconfig.yaml
+echo -n ${PL_MODEL_NAME} >> ${CURRENT_DIR}/config/temp_model_config.yaml
 echo '"' >> ${CURRENT_DIR}/config/temp_model_config.yaml
 echo -n 'dm_name: "' >> ${CURRENT_DIR}/config/temp_model_config.yaml
 echo -n ${PL_DM_NAME} >> ${CURRENT_DIR}/config/temp_model_config.yaml
 echo '"' >> ${CURRENT_DIR}/config/temp_model_config.yaml
 
-CUDA_VISIBLE_DEVICES=2,3,5,6 python main.py \
+CUDA_VISIBLE_DEVICES=1,2,3,4 python main.py \
   --project_name=${TASK_NAME} \
   --bert_name=${BERT_NAME} \
   --tokenizer_name=${TOKENIZER_NAME} \
