@@ -12,12 +12,13 @@ echo -n 'dm_name: "' >> ${CURRENT_DIR}/config/temp_model_config.yaml
 echo -n ${PL_DM_NAME} >> ${CURRENT_DIR}/config/temp_model_config.yaml
 echo '"' >> ${CURRENT_DIR}/config/temp_model_config.yaml
 
-CUDA_VISIBLE_DEVICES=1,2 python main.py \
+CUDA_VISIBLE_DEVICES=6,7 python main.py \
   --project_name=${TASK_NAME} \
   --bert_name=${BERT_NAME} \
   --tokenizer_name=${TOKENIZER_NAME} \
   --max_length=200 \
   --train_path=/data/clean_raw_text/district_labeled_data.json \
+  --eda \
   --focal_loss \
   --num_classes=62 \
   --save_top_k=3 \
@@ -34,5 +35,5 @@ CUDA_VISIBLE_DEVICES=1,2 python main.py \
   --gpus=2 \
   --multi_gpu_strategy=deepspeed_stage_2 \
   --precision=32 \
-  --num_workers=32 \
+  --num_workers=8 \
   --stage=fit

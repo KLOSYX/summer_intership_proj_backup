@@ -211,9 +211,9 @@ def get_params():
     parser.add_argument("--max_epochs", default=30, type=int, help='max epochs')
     parser.add_argument("--min_epochs", default=0, type=int, help='min epochs for early stop. 0 for no early stop')
     parser.add_argument("--patience", default=3, type=int, help='patience for early stop')
-    parser.add_argument("--gpus", default="0", type=str, help='gpus to use')
+    parser.add_argument("--gpus", default="0", type=str, help='gpus to use. 0 means cpu')
     parser.add_argument("--multi_gpu_strategy", default=None, help='strategy for multi gpu')
-    parser.add_argument("--precision", type=int, default=32, help='training precision', choices=[32, 16])
+    parser.add_argument("--precision", type=str, default='32', help='training precision', choices=['32', '16', 'bf16'])
     parser.add_argument("--gradient_clip_val", type=float, default=0., help='gradient clip val. 0 means no clip')
     parser.add_argument("--save_top_k", type=int, default=0, help='save top k best models, 0 means no save')
     parser.add_argument("--stage", type=str, choices=["debug", "fit", "test", "predict"], default="fit", help='running stage')
@@ -230,7 +230,7 @@ def get_params():
     # Training Info
     parser.add_argument("--wandb", action="store_true", help='use wandb')
     parser.add_argument("--use_nni", action="store_true", help='use nni')
-    parser.add_argument("--monitor", type=str, default="val_acc", help='monitor to use for early stop')
+    parser.add_argument("--monitor", type=str, default="val_acc", help='monitor to use for early stop and model saving')
 
     return parser
 

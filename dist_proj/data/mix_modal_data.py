@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader, random_split
 from torchvision import transforms
 import pandas as pd
 from PIL import Image
+from ChineseTextEDA.eda import EDA
 
 
 class GaussianBlur(object):
@@ -58,7 +59,7 @@ class GaussianBlur(object):
 
 
 class MixModalDataset(object):
-    def __init__(self, file_path, stage='fit', image_size=224, multimodal=False, mlm=False, whole_word_mask=False):
+    def __init__(self, file_path, stage='fit', image_size=224, multimodal=False, mlm=False, whole_word_mask=False, eda=False, eda_prob=0.5):
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"{file_path} not found!")
@@ -69,6 +70,8 @@ class MixModalDataset(object):
         self.multimodal = multimodal
         self.mlm = mlm
         self.whole_word_mask = whole_word_mask
+        self.eda = EDA(0) if eda else None
+        self.eda_prob = eda_prob
         print('total data:', len(self.data))
 
     @staticmethod
@@ -93,6 +96,11 @@ class MixModalDataset(object):
     def __getitem__(self, index):
         sample = self.data.iloc[index]
         text = sample["text"]
+        if self.eda is not None:
+            p = random.random()
+            if p < self.eda_prob:
+                aug_texts = self.eda.eda(text, 0.2, 0.2, 0.2, 0.2)
+                text = ''.join(aug_texts[0].split(' '))
         if not self.mlm:
             label = sample["label"]
             if self.multimodal:
@@ -248,12 +256,13 @@ class MixModalData(pl.LightningDataModule):
     def __init__(self, tokenizer_name='hfl/chinese-roberta-wwm-ext', 
                  batch_size_per_gpu=4, 
                  num_workers=0, 
-                 val_size=6000, 
                  max_length=256, 
                  multimodal=False, 
                  mlm=False, 
                  whole_word_mask=False, 
                  val_ratio=0.1,
+                 eda=False,
+                 eda_prob=0.5,
                  **args) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -266,16 +275,29 @@ class MixModalData(pl.LightningDataModule):
 
     def setup(self, stage: str = None) -> None:
         if stage is None or stage == 'fit':
-            data = MixModalDataset(self.hparams.train_path, stage=stage, multimodal=self.visual_processor is not None, mlm=self.hparams.mlm, whole_word_mask=self.hparams.whole_word_mask)
+            data = MixModalDataset(self.hparams.train_path, 
+                                   stage=stage,
+                                   multimodal=self.visual_processor is not None, 
+                                   mlm=self.hparams.mlm, 
+                                   whole_word_mask=self.hparams.whole_word_mask, 
+                                   eda=self.hparams.eda, 
+                                   eda_prob=self.hparams.eda_prob)
             data_size = len(data)
             val_size = int(self.hparams.val_ratio * data_size)
             train_size = data_size - val_size
+            print('train_size:', train_size, '\nval_size:', val_size)
             self.train_dataset, self.valid_dataset = random_split(
                 data, [train_size, val_size])
 
         if stage is None or stage == 'test':
             self.test_dataset = MixModalDataset(
-                self.hparams.test_path, stage=stage, multimodal=self.visual_processor is not None, mlm=self.hparams.mlm, whole_word_mask=self.hparams.whole_word_mask)
+                self.hparams.test_path, 
+                stage=stage, 
+                multimodal=self.visual_processor is not None,
+                mlm=self.hparams.mlm, 
+                whole_word_mask=self.hparams.whole_word_mask, 
+                eda=self.hparams.eda, 
+                eda_prob=self.hparams.eda_prob)
 
     def train_dataloader(self) -> Any:
         return DataLoader(self.train_dataset, batch_size=self.hparams.batch_size_per_gpu, num_workers=self.hparams.num_workers, shuffle=True, collate_fn=self.processor, drop_last=True)
@@ -292,6 +314,8 @@ class MixModalData(pl.LightningDataModule):
         parser.add_argument('--tokenizer_name', default='hfl/chinese-roberta-wwm-ext', type=str)
         parser.add_argument('--whole_word_mask', action='store_true', help='Whether to use whole word masking or not.')
         parser.add_argument('--mlm', action='store_true', help='Masked Language Model')
+        parser.add_argument('--eda', action='store_true', help='Enable EDA')
+        parser.add_argument('--eda_prob', default=0.5, type=float, help='Probability of EDA')
         parser.add_argument('--max_length', type=int,
                             default=256, help='max length of text')
         parser.add_argument('--train_path', type=str,
@@ -307,12 +331,13 @@ class MixModalData(pl.LightningDataModule):
 if __name__ == '__main__':
     # debug
     dm = MixModalData(batch_size_per_gpu=4, num_workers=0,
-                            train_path='/data/clean_raw_text/all_data_cleaned_with_cn_ref.json',
-                            test_path='/data/clean_raw_text/all_data_cleaned_with_cn_ref.json',
+                            train_path='/data/clean_raw_text/dataset/district_train.json',
+                            test_path='/data/clean_raw_text/dataset/district_test.json',
                             tokenizer_name='hfl/chinese-roberta-wwm-ext',
                             multimodal=False,
-                            mlm=True,
-                            whole_word_mask=True,)
+                            mlm=False,
+                            whole_word_mask=False,
+                            eda=True)
     dm.setup('fit')
     dataloader = dm.train_dataloader()
     it = iter(dataloader)
