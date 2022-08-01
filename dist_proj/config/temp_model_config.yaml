@@ -1,2 +1,2 @@
-model_name: "dist_classify"
+model_name: "pure_text_mlm_pretrain"
 dm_name: "mix_modal_data"

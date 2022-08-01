@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 transformers.logging.set_verbosity_error()
+import torchmetrics
 
 from utils.info_nce_pytorch import InfoNCE
 
@@ -33,13 +34,15 @@ class PureTextMlmPretrain(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters(ignore=['tokenizer'])
         self.model = BertForMaskedLM.from_pretrained(bert_name, cache_dir='/data/.cache')
+        self.train_acc = torchmetrics.Accuracy(ignore_index=-100)
+        self.val_acc = torchmetrics.Accuracy(ignore_index=-100)
         
-    def forward(self, tokens):
-        outputs = self.model(input_ids=tokens.input_ids,
-                             attention_mask=tokens.attention_mask,
-                             labels=tokens.labels,
+    def forward(self, encoded):
+        outputs = self.model(input_ids=encoded.input_ids,
+                             attention_mask=encoded.attention_mask,
+                             labels=encoded.labels,
                              return_dict=True)
-        return outputs.loss
+        return outputs.loss, outputs.logits
     
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.hparams.learning_rate)
@@ -48,14 +51,16 @@ class PureTextMlmPretrain(pl.LightningModule):
                     
     def training_step(self, batch, batch_idx) -> STEP_OUTPUT:
         tokens = batch
-        loss = self(tokens)
-        self.log_dict({'train_loss': loss})
+        loss, logits = self(tokens)
+        predictions = torch.argmax(logits, dim=-1) # (N, L)
+        self.log_dict({'train_loss': loss, 'train_acc': self.train_acc(predictions, tokens.labels)})
         return loss
     
     def validation_step(self, batch, batch_idx) -> Optional[STEP_OUTPUT]:
         tokens = batch
-        loss = self(tokens)
-        self.log_dict({'val_loss': loss})
+        loss, logits = self(tokens)
+        predictions = torch.argmax(logits, dim=-1) # (N, L)
+        self.log_dict({'val_loss': loss, 'val_acc': self.val_acc(predictions, tokens.labels)})
               
     @staticmethod
     def add_model_args(parser):

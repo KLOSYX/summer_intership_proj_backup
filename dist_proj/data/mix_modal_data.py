@@ -215,16 +215,20 @@ class Processor(object):
         Get 0/1 labels for masked tokens with whole word mask proxy
         """
         cand_indexes = []
+        num_valid_token = 0
         for i, token in enumerate(input_tokens):
             if token == "[CLS]" or token == "[SEP]" or token == "[PAD]":
                 continue
             if len(cand_indexes) >= 1 and token.startswith("##"):
                 cand_indexes[-1].append(i)
+                num_valid_token += 1
             else:
                 cand_indexes.append([i])
+                num_valid_token += 1
 
         random.shuffle(cand_indexes)
-        num_to_predict = min(max_predictions, max(1, int(round(len(input_tokens) * self.mlm_probability))))
+        # num_to_predict = min(max_predictions, max(1, int(round(len(input_tokens) * self.mlm_probability))))
+        num_to_predict = min(max_predictions, max(1, int(round(num_valid_token * self.mlm_probability))))
         masked_lms = []
         covered_indexes = set()
         for index_set in cand_indexes:
@@ -330,13 +334,12 @@ class MixModalData(pl.LightningDataModule):
 if __name__ == '__main__':
     # debug
     dm = MixModalData(batch_size_per_gpu=4, num_workers=0,
-                            train_path='/data/clean_raw_text/dataset/district_train.json',
-                            test_path='/data/clean_raw_text/dataset/district_test.json',
+                            train_path='/data/clean_raw_text/all_data_cleaned_with_cn_ref.json',
+                            test_path='/data/clean_raw_text/all_data_cleaned_with_cn_ref.json',
                             tokenizer_name='hfl/chinese-roberta-wwm-ext',
                             multimodal=False,
-                            mlm=False,
-                            whole_word_mask=False,
-                            eda=True)
+                            mlm=True,
+                            whole_word_mask=True,)
     dm.setup('fit')
     dataloader = dm.train_dataloader()
     it = iter(dataloader)
