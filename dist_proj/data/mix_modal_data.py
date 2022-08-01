@@ -149,9 +149,8 @@ class Processor(object):
         else:
             if not self.whole_word_mask:
                 tokens = self.text_tokenizer(data, return_tensors='pt', truncation=True,
-                                max_length=self.max_length, padding='max_length', return_special_tokens_mask=True)
-                tokens["input_ids"], tokens["labels"] = self.torch_mask_tokens(
-                    tokens.input_ids, special_tokens_mask=tokens.special_tokens_mask)
+                                max_length=self.max_length, padding='max_length')
+                tokens["input_ids"], tokens["labels"] = self.torch_mask_tokens(tokens.input_ids)
                 return tokens
             else:
                 # whole word mask
@@ -161,8 +160,7 @@ class Processor(object):
                 mask_labels = [self._whole_word_mask(self._handle_chinese_ref(tokens.tokens(i), cn_refs[i])) for i in range(len(text))]
                 mask_labels = torch.tensor(mask_labels, dtype=torch.bool)
                 labels = tokens.input_ids.masked_fill(~mask_labels, -100)
-                tokens['labels'] = labels
-                tokens.input_ids.masked_fill_(mask_labels, self.text_tokenizer.mask_token_id)
+                tokens["input_ids"], tokens["labels"] = self.torch_mask_tokens(tokens.input_ids, None, labels)
                 return tokens
                 
                 
@@ -174,25 +172,29 @@ class Processor(object):
         return tokens
                 
         
-    def torch_mask_tokens(self, inputs: Any, special_tokens_mask: Optional[Any] = None) -> Tuple[Any, Any]:
+    def torch_mask_tokens(self, inputs: Any, special_tokens_mask: Optional[Any] = None, labels: torch.Tensor = None) -> Tuple[Any, Any]:
         """
         Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
         """
-        labels = inputs.clone()
-        # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
-        probability_matrix = torch.full(labels.shape, self.mlm_probability)
-        if special_tokens_mask is None:
-            special_tokens_mask = [
-                self.text_tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True) for val in labels.tolist()
-            ]
-            special_tokens_mask = torch.tensor(
-                special_tokens_mask, dtype=torch.bool)
-        else:
-            special_tokens_mask = special_tokens_mask.bool()
+        if labels is None:
+            labels = inputs.clone()
+            # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
+            probability_matrix = torch.full(labels.shape, self.mlm_probability)
+            if special_tokens_mask is None:
+                special_tokens_mask = [
+                    self.text_tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True) for val in labels.tolist()
+                ]
+                special_tokens_mask = torch.tensor(
+                    special_tokens_mask, dtype=torch.bool)
+            else:
+                special_tokens_mask = special_tokens_mask.bool()
 
-        probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
-        masked_indices = torch.bernoulli(probability_matrix).bool()
-        labels[~masked_indices] = -100  # We only compute loss on masked tokens
+            probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
+            masked_indices = torch.bernoulli(probability_matrix).bool()
+            labels[~masked_indices] = -100  # We only compute loss on masked tokens
+        
+        else:
+            masked_indices = labels != -100
 
         # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
         indices_replaced = torch.bernoulli(torch.full(

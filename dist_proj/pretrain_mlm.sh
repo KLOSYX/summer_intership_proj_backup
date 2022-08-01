@@ -27,7 +27,7 @@ CUDA_VISIBLE_DEVICES=1,2,3,4 python main.py \
   --min_epoch=10 \
   --patience=3 \
   --gradient_clip_val=0 \
-  --monitor=val_loss \
+  --monitor=val_acc \
   --wandb \
   --gpus=4 \
   --multi_gpu_strategy=deepspeed_stage_2 \
